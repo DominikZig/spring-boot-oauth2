@@ -1,5 +1,6 @@
 package com.myprojects.springbootoauth2;
 
+import org.apache.catalina.User;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -21,9 +22,12 @@ import org.springframework.security.web.authentication.www.BasicAuthenticationFi
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.filter.CompositeFilter;
 
 import javax.servlet.Filter;
 import java.security.Principal;
+import java.util.ArrayList;
+import java.util.List;
 
 @SpringBootApplication
 @EnableOAuth2Client
@@ -58,17 +62,35 @@ public class SpringBootOauth2Application extends WebSecurityConfigurerAdapter
 
 	private Filter ssoFilter()
 	{
-		OAuth2ClientAuthenticationProcessingFilter facebookFilter = new OAuth2ClientAuthenticationProcessingFilter("/login/facebook");
-		OAuth2RestTemplate facebookTemplate = new OAuth2RestTemplate(facebook(), oAuth2ClientContext);
+        CompositeFilter filter = new CompositeFilter();
+        List<Filter> filters = new ArrayList<>();
 
-		facebookFilter.setRestTemplate(facebookTemplate);
+        OAuth2ClientAuthenticationProcessingFilter facebookFilter = new OAuth2ClientAuthenticationProcessingFilter("/login/facebook");
+        OAuth2RestTemplate facebookTemplate = new OAuth2RestTemplate(facebook(), oAuth2ClientContext);
 
-		UserInfoTokenServices tokenServices = new UserInfoTokenServices(facebookResource().getUserInfoUri(), facebook().getClientId());
+        facebookFilter.setRestTemplate(facebookTemplate);
 
-		tokenServices.setRestTemplate(facebookTemplate);
-		facebookFilter.setTokenServices(tokenServices);
+        UserInfoTokenServices tokenServices = new UserInfoTokenServices(facebookResource().getUserInfoUri(), facebook().getClientId());
 
-		return facebookFilter;
+        tokenServices.setRestTemplate(facebookTemplate);
+        facebookFilter.setTokenServices(tokenServices);
+        filters.add(facebookFilter);
+
+        OAuth2ClientAuthenticationProcessingFilter githubFilter = new OAuth2ClientAuthenticationProcessingFilter("/login/github");
+        OAuth2RestTemplate githubTemplate = new OAuth2RestTemplate(github(), oAuth2ClientContext);
+
+        githubFilter.setRestTemplate(githubTemplate);
+
+        tokenServices = new UserInfoTokenServices(githubResource().getUserInfoUri(), github().getClientId());
+        tokenServices.setRestTemplate(githubTemplate);
+
+        githubFilter.setTokenServices(tokenServices);
+
+        filters.add(githubFilter);
+
+        filter.setFilters(filters);
+
+        return filter;
 	}
 
 	@Bean
@@ -84,6 +106,20 @@ public class SpringBootOauth2Application extends WebSecurityConfigurerAdapter
 	{
 		return new ResourceServerProperties();
 	}
+
+	@Bean
+    @ConfigurationProperties("github.client")
+    public AuthorizationCodeResourceDetails github()
+    {
+        return new AuthorizationCodeResourceDetails();
+    }
+
+    @Bean
+    @ConfigurationProperties("github.resource")
+    public ResourceServerProperties githubResource()
+    {
+        return new ResourceServerProperties();
+    }
 
 	@Bean
 	public FilterRegistrationBean<OAuth2ClientContextFilter> oAuth2ClientFilterRegistration(OAuth2ClientContextFilter filter)
