@@ -3,12 +3,17 @@ package com.myprojects.springbootoauth2;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+import org.springframework.boot.autoconfigure.security.SecurityProperties;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.ResourceServerProperties;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.UserInfoTokenServices;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 import org.springframework.security.oauth2.client.OAuth2ClientContext;
@@ -16,7 +21,10 @@ import org.springframework.security.oauth2.client.OAuth2RestTemplate;
 import org.springframework.security.oauth2.client.filter.OAuth2ClientAuthenticationProcessingFilter;
 import org.springframework.security.oauth2.client.filter.OAuth2ClientContextFilter;
 import org.springframework.security.oauth2.client.token.grant.code.AuthorizationCodeResourceDetails;
+import org.springframework.security.oauth2.config.annotation.web.configuration.EnableAuthorizationServer;
 import org.springframework.security.oauth2.config.annotation.web.configuration.EnableOAuth2Client;
+import org.springframework.security.oauth2.config.annotation.web.configuration.EnableResourceServer;
+import org.springframework.security.oauth2.config.annotation.web.configuration.ResourceServerConfigurerAdapter;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
@@ -27,37 +35,59 @@ import org.springframework.web.filter.CompositeFilter;
 import javax.servlet.Filter;
 import java.security.Principal;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @SpringBootApplication
-@EnableOAuth2Client
 @RestController
+@EnableOAuth2Client
+@EnableAuthorizationServer
+@Order(200) //ensures that the rule for "/me" takes precedence
 public class SpringBootOauth2Application extends WebSecurityConfigurerAdapter
 {
 	@Autowired
 	OAuth2ClientContext oAuth2ClientContext;
 
-	@RequestMapping("/user")
-	public Principal user(Principal principal)
+	@RequestMapping({ "/user", "/me"})
+	public Map<String, String> user(Principal principal)
 	{
-		//generally not a good idea to return a whole Principal, since it might expose info that the browser client doesn't need to know
-		return principal; //describes the currently authenticated user
+		//generally not a good idea to return a whole Principal, since it might expose info that the browser client doesn't need to know.
+		//thus we use a Map instead and only expose the name
+
+		Map<String, String> map = new LinkedHashMap<>();
+		map.put("name", principal.getName());
+
+		return map; //describes the currently authenticated user
 	}
 
 	@Override
 	protected void configure(HttpSecurity http) throws Exception
 	{
 		http
-				.antMatcher("/**")
+				.antMatcher("/**") //All requests are protected by default
 				.authorizeRequests()
-					.antMatchers("/", "/login**", "/webjars/**", "/error**")
-					.permitAll()
+					.antMatchers("/", "/login**", "/webjars/**")
+					.permitAll() //The home page and login endpoints are explicitly excluded
 				.anyRequest()
-					.authenticated()
-				.and().exceptionHandling().authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/"))
+					.authenticated() //All other endpoints require an authenticated user
+				.and().exceptionHandling().authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/")) //Unauthenticated users are re-directed to the home page
 		        .and().logout().logoutSuccessUrl("/").permitAll()
                 .and().csrf().csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
 				.and().addFilterBefore(ssoFilter(), BasicAuthenticationFilter.class);
+	}
+
+	@Configuration
+	@EnableResourceServer
+	protected static class ResourceServerConfiguration extends ResourceServerConfigurerAdapter
+	{
+		@Override
+		public void configure(HttpSecurity http) throws Exception
+		{
+			http
+					.antMatcher("/me")
+					.authorizeRequests().anyRequest().authenticated();
+		}
 	}
 
 	private Filter ssoFilter()

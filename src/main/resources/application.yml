@@ -1,3 +1,12 @@
+#setting up our own custom authorization Client:
+security:
+  oauth2:
+    client:
+      client-id: acme
+      client-secret: acmesecret
+      scope: read,write
+      auto-approve-scopes: '.*'
+
 facebook:
     client:
       clientId: 233668646673605
@@ -16,6 +25,6 @@ github:
     clientSecret: 1a9030fbca47a5b2c28e92f19050bb77824b5ad1
     accessTokenUri: https://github.com/login/oauth/access_token
     userAuthorizationUri: https://github.com/login/oauth/authorize
-    clientAutheticationScheme: form
+    clientAuthenticationScheme: form
   resource:
     userInfoUri: https://api.github.com/user
